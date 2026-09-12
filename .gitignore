@@ -169,3 +169,16 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# ===== DreMa 재현 작업용 (원본 저장소에 없는 항목) =====
+# 환경 구축 스크립트
+_setup/
+# 실행 로그 (CLAUDE.md 규칙: run_logs/YYYYMMDD_HHMM_<용도>.log)
+run_logs/
+# 데이터 (샘플 데이터는 별도 다운로드)
+data/
+# Hydra 실행 산출물
+outputs/
+# OMC 도구 상태 폴더
+.omc/
+**/.omc/

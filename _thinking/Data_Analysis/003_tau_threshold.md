@@ -235,3 +235,127 @@ data/
 > **τ=0.015 면 증강이 33 → 17개로 반토막 난다.** 오차 전수 스캔 결과 정상 33개의 평균이 1.49 cm 라, **τ=1.5 cm 가 분포 한가운데를 자르기** 때문이다.
 > **탈락한 16개는 눈으로 보면 성공한 시범이지만, 논문 채택률(41%)이 우리 τ=0.015(49%)와 일치**하므로 저자도 그렇게 버렸다. → **학습에는 `aug_tau015_paper` 를 쓴다.**
 > **τ보다 큰 격차는 원본 시범 1개 vs 논문 4개**다. 학습 데이터가 논문의 28% 라 수치는 낮게 나올 것이다.
+
+---
+---
+
+# 부록 A. 논문 PDF 원문 대조 — 정정과 새로 알아낸 것
+
+추가: 2026-09-19
+대상: `_thinking/raws/Dream to Manipulate ….pdf` (arXiv 2412.14957v2, 34쪽)
+계기: 본문까지는 arXiv HTML 로 작업했는데, 사용자가 PDF 원본을 제공해 전문을 대조했다.
+
+---
+
+## A-1. 정정 — 채택률 수치
+
+본문 §6 에 **"논문도 증강의 약 60%를 버렸다"** 라고 썼으나 **반대다.**
+
+> 부록 L 원문: *"a theoretical maximum of 1369 demonstrations, but filtering reduces this to 831, **retaining approximately 60%** of the generated data."*
+
+| | 총 가능 | 채택 | **채택률** |
+|---|---|---|---|
+| 논문 **전체 9과제** | 1369 (원본 37 × 37) | 831 | **61 %** |
+| 논문 **slide_block** | 148 (원본 4 × 37) | 61 | **41 %** |
+| **우리 τ=0.015** | 37 | 18 | **49 %** |
+| 우리 τ=0.035 | 37 | 34 | **92 %** |
+
+→ **결론은 바뀌지 않는다.** 우리 49% 는 논문의 slide_block(41%)과 전체 평균(61%) **사이**에 있고, 92% 는 어느 쪽과도 맞지 않는다. **τ=0.015 선택은 유효하다.**
+
+---
+
+## A-2. ⚠️ 두 번째 불일치 — `radius_filter`
+
+τ 와 **똑같은 구조의 문제**를 하나 더 찾았다.
+
+> 부록 L 원문: *"the depth images rendered by the Gaussians are inaccurate along the edges... This created **noisy point clouds that affected the agent**. We solve it by filtering using the **radius outlier removal from Open3D**."*
+
+```yaml
+# configs/simulation/coppelia_simulation.yaml:28
+output:
+  radius_filter: False     # ← False 면 Scharr 필터를 쓴다
+```
+```python
+# drema/environment/base_environment.py:175-178
+if radius_filter: depth = filter_radious_outlier(...)   # 논문이 쓴 것
+else:             depth = filter_scharr(...)            # 우리가 쓴 것
+```
+
+### 왜 중요한가
+
+```
+가우시안 렌더링 → 깊이 이미지 → 3D 포인트클라우드 → PerAct 의 복셀 입력
+                      ↑ 여기서 필터가 작동
+```
+
+**[공학적 정의]** 가우시안은 물체 **가장자리에서 깊이를 부정확하게** 그린다. 그대로 3D로 되쏘면 허공에 뜬 잡음 점이 생긴다.
+- **Radius outlier removal**(논문): 점 주변 반경 안에 이웃이 적으면 버린다 → **3D 공간에서 판단**
+- **Scharr**(코드 기본값): 2D 깊이 이미지에서 경계가 급한 픽셀을 버린다 → **2D 화면에서 판단**
+
+**[비유]** 흐릿한 부분을 지우는 두 방법이다. 하나는 **입체 모형을 세워 놓고 혼자 떨어진 조각을 집어내는 것**, 다른 하나는 **사진 위에서 번진 윤곽선을 지우는 것**이다. 결과가 다르다.
+
+### 영향 범위
+
+| | 영향 |
+|---|---|
+| τ 채택/기각 | ❌ 없음 — PyBullet 물체 좌표로 판정. **같은 17개가 나온다** |
+| RGB | ❌ 없음 |
+| **깊이 → PerAct 입력** | ✅ **바뀐다** |
+
+→ `radius_filter=True` 로 재생성해 `data/aug_tau015_radius/` 에 둔다. 로그 `run_logs/20260919_1632_m1_gen_tau015_radius.log`.
+
+### 이미 일치하는 것 — `scale: 4`
+
+논문: *"we rendered a higher-resolution image and down-sampled it"*
+코드: `rgb[::scale, ::scale]`, `scale: 4` → 512×512 렌더 후 128×128 축소. **일치한다.**
+
+---
+
+## A-3. M4 학습 설정 — 논문에 전부 있다 (부록 L)
+
+| 항목 | 값 | 비고 |
+|---|---|---|
+| 기반 | PerAct 원본 파라미터 | |
+| **배치 크기** | **4** | 원본 크기로도 시험 → slide block 은 +1.2 차이뿐 |
+| **반복** | **100k** (단일과제) | 다중과제 600k |
+| **체크포인트** | **5k 마다** | 원본은 10k. *"학습 후반부 모델을 더 많이 남기려고"* 저자가 좁혔다 |
+| 검증 | 5k 마다 → 최고 모델 선택 | |
+| 학습 GPU | Nvidia A40 | |
+
+> 저자의 5k 판단은 **CLAUDE.md 의 "저장 분기를 촘촘하게" 규칙과 같다.**
+
+### 평가 프로토콜
+
+| | 논문 | PerAct 원본 |
+|---|---|---|
+| 검증 세트 | **40** | 25 |
+| 테스트 세트 | **50** | 25 |
+| 반복 | **5회** | — |
+
+### 카메라 — 3대 확정
+
+> *"q̃ₛᵢₘ = q_front, q_left, q_right"* · *"radius filter... less effective with the wrist camera. Therefore, we used **three cameras instead of four**"*
+
+**front / left_shoulder / right_shoulder**, 이미지 **128×128**. overhead·wrist 제외.
+→ Code_Analysis/001 이 "손목 카메라 CUDA 하드코딩 고장"으로 추정한 것과 **이유는 다르지만 결과는 같다**(논문은 필터 효과 부족을 이유로 들었다).
+
+---
+
+## A-4. slide_block 목표 수치 (Table 1)
+
+| 조건 | 성공률 (%) |
+|---|---|
+| PerAct (원본만) | **48.4 ± 3.20** (최고 50) |
+| DreMa (상상만) | 54.4 ± 2.15 (최고 62) |
+| **DreMa + 원본 (전부)** | **62.0 ± 2.19** (최고 66) |
+
+단, 이 수치는 **원본 4개 + 증강 61개 = 65개**로 낸 것이다. 우리는 **원본 1개 + 증강 17개 = 18개**(28%)이므로 **더 낮게 나온다.**
+
+---
+
+## 부록 A 요약
+
+> **정정**: 논문은 증강의 60%를 **버린 게 아니라 채택**했다(1369 → 831). 다만 slide_block 만 보면 채택률 41% 이고, **우리 49% 가 그 사이에 있어 τ=0.015 결론은 그대로**다.
+> **⚠️ 두 번째 불일치 `radius_filter`**: 논문은 Open3D radius outlier removal, 코드 기본값은 Scharr. **PerAct 입력인 포인트클라우드가 달라진다.** τ 판정에는 영향이 없어 같은 17개가 나오되 깊이만 논문 방식이 된다 → `aug_tau015_radius/` 로 재생성.
+> **M4 설정을 전부 확보**했다 — 배치 4 · 100k 반복 · **5k마다 저장** · 검증40/테스트50×5회 · 카메라 3대 · 128×128.
+> **목표 수치**는 48.4 → 62.0 이지만, 논문은 데이터 65개, 우리는 18개다.

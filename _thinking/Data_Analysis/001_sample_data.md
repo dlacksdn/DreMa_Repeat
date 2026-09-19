@@ -4,7 +4,7 @@
 대상: `data/slide_block_to_color_target_episode0_start/` (2.1 GB)
 출처: https://huggingface.co/datasets/leobarcellona/DreMa_data → `sample_slide_block.tar`
 
-![개요](20260914_1230_sample_data_overview.png)
+![개요](20260914_1230_001_sample_data_overview.png)
 
 ---
 
